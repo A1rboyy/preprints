@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+
+data/
+output/
+
+*.csv
+*.txt
+*.png
+*.pdf
+~$*
+*.docx
+metadata.json
+.ipynb_checkpoints/
+*.pyc

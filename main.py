@@ -1,84 +1,79 @@
-import json
-import csv
-import requests
-import time
 import os
+import pandas as pd
 
-API_URL = "https://api.semanticscholar.org/graph/v1/paper/DOI:{}"
+from pdf_parser import extract_text_from_pdf
+from text_features import calculate_text_features
+from structure_features import calculate_structure_features
+from openalex import fetch_openalex_data
 
+PDF_FOLDER = "data/pdfs"
 
-def get_citation_count(doi: str) -> int:
-    params = {"fields": "citationCount"}
-    
-    response = requests.get(API_URL.format(doi), params=params)
-    
-    if response.status_code != 200:
-        print(f"Failed for {doi}: {response.status_code}")
-        return None
+results = []
 
-    data = response.json()
-    return data.get("citationCount", None)
+for file in os.listdir(PDF_FOLDER):
 
+    if file.endswith(".pdf") and not file.startswith("._"):
 
-def load_existing_dois(csv_path: str) -> set:
-    """Read already processed DOIs from CSV"""
-    processed = set()
+        path = os.path.join(PDF_FOLDER, file)
 
-    if not os.path.exists(csv_path):
-        return processed
+        print(f"\nProcessing: {file}")
 
-    with open(csv_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            doi = row["doi"]
-            citation_count = row["citation_count"]
+        # PDF Text extrahieren
+        text = extract_text_from_pdf(path)
 
-            # only skip if we actually have a result
-            if citation_count not in ("", "None", None):
-                processed.add(doi)
+        # einfache Qualitätsfilter
+        word_count = len(text.split())
 
-    return processed
+        if word_count < 1000:
+            print("Skipped: too short")
+            continue
 
+        if word_count > 30000:
+            print("Skipped: too long")
+            continue
 
-def process_metadata(json_path: str, output_csv: str):
-    with open(json_path, "r") as f:
-        metadata = json.load(f)
+        # Text Features berechnen
+        features = calculate_text_features(text)
+        structure_features = calculate_structure_features(text)
 
-    articles = metadata["articles"]
+        features.update(structure_features)
 
-    processed_dois = load_existing_dois(output_csv)
+        # DOI aus Dateiname
+        doi = file.replace(".pdf", "")
+        doi = doi.replace("_", "/")
 
-    # open in append mode
-    file_exists = os.path.exists(output_csv)
+        features["doi"] = doi
+        features["file"] = file
 
-    with open(output_csv, "a", newline="", encoding="utf-8") as csvfile:
-        writer = csv.writer(csvfile)
+        # OpenAlex Daten abrufen
+        print("Fetching OpenAlex data...")
 
-        # write header only if file is new
-        if not file_exists:
-            writer.writerow(["doi_type", "doi", "title", "citation_count"])
+        openalex_data = fetch_openalex_data(doi)
 
-        for article in articles:
-            title = article["preprint_title"]
+        if openalex_data:
 
-            dois = [
-                ("biorxiv_doi", article.get("biorxiv_doi")),
-                ("published_doi", article.get("published_doi"))
-            ]
+            features.update(openalex_data)
 
-            for doi_type, doi in dois:
-                if not doi or doi in processed_dois:
-                    continue
+        else:
 
-                citation_count = get_citation_count(doi)
+            print("No OpenAlex data found.")
 
-                writer.writerow([doi_type, doi, title, citation_count])
-                processed_dois.add(doi)
+        # Ergebnisse speichern
+        results.append(features)
 
-                print(f"{doi_type}: {doi} -> {citation_count}")
+# ==========================================
+# EXPORT
+# ==========================================
 
-                time.sleep(1)
+df = pd.DataFrame(results)
 
+os.makedirs("output", exist_ok=True)
 
-if __name__ == "__main__":
-    process_metadata("SampleData/metadata.json", "citations.csv")
+df.to_csv(
+    "output/full_dataset.csv",
+    index=False,
+    sep=";"
+)
+
+print("\nDone.")
+print(df.head())

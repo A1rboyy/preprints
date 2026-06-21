@@ -6,8 +6,16 @@ from text_features import calculate_text_features
 from openalex import fetch_openalex_data
 from structure_features import calculate_structure_features
 
-JSON_FOLDER = "data/final_data/json"
-XML_FOLDER = "data/final_data/xml"
+JSON_FOLDER = "team4/json"
+XML_FOLDER = "team4/xml"
+
+OUTPUT_FILE = "output/full_dataset.csv"
+
+if os.path.exists(OUTPUT_FILE):
+    existing_df = pd.read_csv(OUTPUT_FILE, sep=";")
+    processed_dois = set(existing_df["doi"].dropna().tolist())
+else:
+    processed_dois = set()
 
 results = []
 
@@ -95,6 +103,10 @@ for file in os.listdir(JSON_FOLDER):
 
     doi = metadata.get("doi")
 
+    if doi in processed_dois:
+        print(f"Skipping already processed: {doi}")
+        continue
+
     features["doi"] = doi
 
     features["preprint_date"] = (
@@ -143,27 +155,20 @@ for file in os.listdir(JSON_FOLDER):
     # Datensatz erweitern
     # ======================
 
-    results.append(features)
+    df_row = pd.DataFrame([features])
+
+    file_exists = os.path.exists(OUTPUT_FILE)
+
+    df_row.to_csv(
+        OUTPUT_FILE,
+        sep=";",
+        index=False,
+        mode="a",
+        header=not file_exists
+    )
+
+    print(f"Saved: {doi}")
 
 # ======================
 # EXPORT
 # ======================
-
-df = pd.DataFrame(results)
-
-os.makedirs(
-    "output",
-    exist_ok=True
-)
-
-df.to_csv(
-    "output/full_dataset.csv",
-    sep=";",
-    index=False
-)
-
-print("\nDone.")
-print(df.head())
-
-print("\nDataset Shape:")
-print(df.shape)

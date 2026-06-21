@@ -1,35 +1,35 @@
-import re
+import xml.etree.ElementTree as ET
 
-def calculate_structure_features(text):
+def calculate_structure_features(xml_path):
 
     features = {}
 
-    # Figure Count
-    figures = len(
-        re.findall(r"figure|fig\\.", text.lower())
-    )
+    try:
 
-    # Table Count
-    tables = len(
-        re.findall(r"table", text.lower())
-    )
+        tree = ET.parse(xml_path)
 
-    # Section Count
-    sections = len(
-        re.findall(
-            r"\\n[A-Z][A-Z\\s]{3,}\\n",
-            text
+        root = tree.getroot()
+
+        # Sections zählen
+        sections = len(
+            root.findall(".//sec")
         )
-    )
 
-    # Reference Count
-    references = len(
-        re.findall(r"\\[[0-9]+\\]", text)
-    )
+        # References zählen
+        references = len(
+            root.findall(".//ref")
+        )
 
-    features["figure_count"] = figures
-    features["table_count"] = tables
-    features["section_count"] = sections
-    features["reference_count"] = references
+        features["section_count"] = sections
+        features["reference_count"] = references
+
+    except Exception as e:
+
+        print(
+            f"XML Error: {xml_path} -> {e}"
+        )
+
+        features["section_count"] = None
+        features["reference_count"] = None
 
     return features

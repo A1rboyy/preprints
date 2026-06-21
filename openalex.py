@@ -43,8 +43,16 @@ def fetch_openalex_data(doi):
                 .get("display_name")
         )
 
-        # Published Flag
-        published_flag = 1 if journal_name else 0
+        source_type = (
+            data.get("primary_location", {})
+                .get("source", {})
+                .get("type")
+        )
+
+        published_flag = (
+            1 if source_type == "journal"
+            else 0
+        )
 
         return {
 
@@ -83,6 +91,6 @@ def fetch_openalex_data(doi):
 
     finally:
 
-        time.sleep(0.1)
+        time.sleep(0.5)
 
 

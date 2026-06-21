@@ -1,79 +1,169 @@
 import os
+import json
 import pandas as pd
 
-from pdf_parser import extract_text_from_pdf
 from text_features import calculate_text_features
-from structure_features import calculate_structure_features
 from openalex import fetch_openalex_data
+from structure_features import calculate_structure_features
 
-PDF_FOLDER = "data/pdfs"
+JSON_FOLDER = "data/final_data/json"
+XML_FOLDER = "data/final_data/xml"
 
 results = []
 
-for file in os.listdir(PDF_FOLDER):
+for file in os.listdir(JSON_FOLDER):
 
-    if file.endswith(".pdf") and not file.startswith("._"):
+    if not file.endswith(".json"):
+        continue
 
-        path = os.path.join(PDF_FOLDER, file)
+    path = os.path.join(JSON_FOLDER, file)
 
-        print(f"\nProcessing: {file}")
+    print(f"\nProcessing: {file}")
 
-        # PDF Text extrahieren
-        text = extract_text_from_pdf(path)
+    with open(path, "r", encoding="utf-8") as f:
 
-        # einfache Qualitätsfilter
-        word_count = len(text.split())
+        data = json.load(f)
 
-        if word_count < 1000:
-            print("Skipped: too short")
-            continue
+    text = data.get("text", "")
 
-        if word_count > 30000:
-            print("Skipped: too long")
-            continue
+    if not text:
+        print("Skipped: no text")
+        continue
 
-        # Text Features berechnen
-        features = calculate_text_features(text)
-        structure_features = calculate_structure_features(text)
+    # ======================
+    # Qualitätsfilter
+    # ======================
 
-        features.update(structure_features)
+    word_count = len(text.split())
 
-        # DOI aus Dateiname
-        doi = file.replace(".pdf", "")
-        doi = doi.replace("_", "/")
+    if word_count < 1000:
+        print("Skipped: too short")
+        continue
 
-        features["doi"] = doi
-        features["file"] = file
+    if word_count > 30000:
+        print("Skipped: too long")
+        continue
 
-        # OpenAlex Daten abrufen
+    # ======================
+    # Text Features
+    # ======================
+
+    features = calculate_text_features(text)
+
+    # ======================
+    # Struktur Features
+    # ======================
+
+    features["figure_count"] = len(
+        data.get("figures", [])
+    )
+
+    features["table_count"] = len(
+        data.get("tables", [])
+    )
+
+    xml_file = file.replace(
+        ".json",
+        ".xml"
+    )
+
+    xml_path = os.path.join(
+        XML_FOLDER,
+        xml_file
+    )
+
+    structure_features = (
+        calculate_structure_features(
+            xml_path
+        )
+    )
+
+    features.update(
+        structure_features
+    )
+
+    # ======================
+    # Metadaten
+    # ======================
+
+    metadata = data.get("metadata", {})
+
+    pub_metadata = metadata.get(
+        "pub_metadata",
+        {}
+    )
+
+    doi = metadata.get("doi")
+
+    features["doi"] = doi
+
+    features["preprint_date"] = (
+        pub_metadata.get("preprint_date")
+    )
+
+    features["preprint_category"] = (
+        pub_metadata.get("preprint_category")
+    )
+
+    features["published_doi"] = (
+        pub_metadata.get("published_doi")
+    )
+
+    features["published_flag"] = (
+        1
+        if pub_metadata.get("published_doi")
+        else 0
+    )
+
+    # ======================
+    # OpenAlex
+    # ======================
+
+    if doi:
+
         print("Fetching OpenAlex data...")
 
-        openalex_data = fetch_openalex_data(doi)
+        openalex_data = fetch_openalex_data(
+            doi
+        )
 
         if openalex_data:
 
-            features.update(openalex_data)
+            features.update(
+                openalex_data
+            )
 
         else:
 
-            print("No OpenAlex data found.")
+            print(
+                "No OpenAlex data found."
+            )
 
-        # Ergebnisse speichern
-        results.append(features)
+    # ======================
+    # Datensatz erweitern
+    # ======================
 
-# ==========================================
+    results.append(features)
+
+# ======================
 # EXPORT
-# ==========================================
+# ======================
 
 df = pd.DataFrame(results)
 
-os.makedirs("output", exist_ok=True)
+os.makedirs(
+    "output",
+    exist_ok=True
+)
 
 df.to_csv(
     "output/full_dataset.csv",
-    index=False,
-    sep=";"
+    sep=";",
+    index=False
 )
 
 print("\nDone.")
 print(df.head())
+
+print("\nDataset Shape:")
+print(df.shape)
